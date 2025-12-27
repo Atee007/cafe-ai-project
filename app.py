@@ -28,12 +28,12 @@ st.markdown("""
 def load_data():
     target_file = None
     for file in os.listdir():
-        if 'Coffee' in file and file.endswith('sales_forecast_results.csv'):
+        if 'Coffee' in file and file.endswith('Coffee Shop Sales.xlsx'):
             target_file = file
             break
     
     if target_file:
-        df = pd.read_csv(target_file)
+        df = pd.read_xlsx(target_file)
         
         # --- ล้างข้อมูล (Cleaning) ---
         # 1. แปลงวันที่
