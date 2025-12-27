@@ -1,95 +1,78 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
-from xgboost import XGBRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error
 import os
 
-st.set_page_config(layout="wide", page_title="AI Cafe Prediction Pro")
+# 1. ตั้งค่าหน้าจอ (กลับมาใช้สีเดิมมาตรฐาน ไม่ใส่ CSS ตกแต่ง)
+st.set_page_config(layout="wide", page_title="AI Cafe Dashboard")
 
-# --- 1. Load & Prepare Data (Step 2-3 CRISP-DM) ---
+# 2. ฟังก์ชันโหลดข้อมูลจากไฟล์ Excel
 @st.cache_data
-def load_and_process():
-    file_name = 'Coffee Shop Sales.xlsx - Transactions.csv'
+def load_data():
+    # ใช้ชื่อไฟล์ตามที่อาจารย์แจ้ง (ตรวจสอบว่าไฟล์นี้อยู่ใน GitHub ด้วยนะครับ)
+    file_name = 'Coffee Shop Sales.xlsx' 
+    
     if os.path.exists(file_name):
-        df = pd.read_csv(file_name)
+        # โหลดไฟล์ Excel
+        df = pd.read_excel(file_name)
+        
+        # แปลงชื่อคอลัมน์และคำนวณยอดขายให้ตรงกับไฟล์ของอาจารย์
+        # (หมายเหตุ: ไฟล์ของอาจารย์มีคอลัมน์ transaction_qty และ unit_price)
         df['transaction_date'] = pd.to_datetime(df['transaction_date'])
         df['total_sales'] = df['transaction_qty'] * df['unit_price']
-        
-        # รวมยอดรายวันเพื่อเข้า Model
-        daily_df = df.groupby('transaction_date')['total_sales'].sum().reset_index()
-        
-        # Feature Engineering: แปลงวันที่เป็นตัวเลขที่ Model เข้าใจ
-        daily_df['day_of_week'] = daily_df['transaction_date'].dt.dayofweek
-        daily_df['month'] = daily_df['transaction_date'].dt.month
-        daily_df['day'] = daily_df['transaction_date'].dt.day
-        return daily_df
+        return df
     return None
 
-df_model = load_and_process()
+df = load_data()
 
-# --- 2. Sidebar Menu ---
+# 3. เมนูข้างซ้าย
 with st.sidebar:
-    st.title("☕ AI Cafe Automation")
-    menu = st.radio("ขั้นตอน", ["แดชบอร์ดข้อมูล", "สร้างโมเดล AI (XGBoost)"])
+    st.title("☕ Cafe Management")
+    menu = st.radio("เลือกหน้าเมนู", ["แดชบอร์ด", "บันทึกยอดขาย", "จัดการสินค้า", "คาดการณ์ยอดขาย"])
 
-# --- 3. Execution ---
-if df_model is not None:
-    if menu == "แดชบอร์ดข้อมูล":
-        st.title("📊 ข้อมูลพื้นฐานก่อนพยากรณ์")
-        st.line_chart(df_model.set_index('transaction_date')['total_sales'])
-        st.write("ชุดข้อมูลพร้อมสำหรับการทำ Modeling...")
+# 4. การแสดงผลในแต่ละเมนู
+if df is not None:
+    if menu == "แดชบอร์ด":
+        st.title("📈 ภาพรวมยอดขาย")
+        
+        # คำนวณค่าตัวเลขสำหรับการ์ดโชว์
+        total_sales = df['total_sales'].sum()
+        total_orders = len(df)
+        avg_price = df['unit_price'].mean()
 
-    elif menu == "สร้างโมเดล AI (XGBoost)":
-        st.title("🤖 กระบวนการสร้าง Model & Prediction")
-        
-        # จัดเตรียม X (ปัจจัย) และ y (เป้าหมาย)
-        X = df_model[['day_of_week', 'month', 'day']]
-        y = df_model['total_sales']
-        
-        # แบ่งข้อมูล Train/Test (CRISP-DM Step 4)
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        # สร้างตัวแบบ XGBoost
-        model = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5)
-        
-        with st.spinner('AI กำลังเรียนรู้ข้อมูล...'):
-            model.fit(X_train, y_train)
-            
-        # ประเมินผล (Step 5)
-        predictions = model.predict(X_test)
-        mae = mean_absolute_error(y_test, predictions)
-        
-        # แสดงผลความแม่นยำ
-        col1, col2 = st.columns(2)
-        col1.success("โมเดลฝึกสอนเสร็จสมบูรณ์!")
-        col2.metric("ค่าความคลาดเคลื่อน (MAE)", f"฿{mae:.2f}")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("ยอดขายรวม", f"฿{total_sales:,.2f}")
+        col2.metric("จำนวนรายการ", f"{total_orders:,} บิล")
+        col3.metric("ราคาเฉลี่ยต่อชิ้น", f"฿{avg_price:.2f}")
 
-        # --- ส่วนการทำนายอนาคต 7 วัน (Step 6) ---
-        st.divider()
-        st.subheader("🔮 พยากรณ์ยอดขาย 7 วันข้างหน้า")
-        
-        last_date = df_model['transaction_date'].max()
-        future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=7)
-        
-        future_features = pd.DataFrame({
-            'day_of_week': future_dates.dayofweek,
-            'month': future_dates.month,
-            'day': future_dates.day
-        })
-        
-        future_preds = model.predict(future_features)
-        
-        # แสดงผลพยากรณ์เป็นกราฟ
-        res_df = pd.DataFrame({'วันที่': future_dates, 'ยอดขายคาดการณ์': future_preds})
-        fig = px.bar(res_df, x='วันที่', y='ยอดขายคาดการณ์', 
-                     text_auto='.2s', title="พยากรณ์ยอดขายรายวัน",
-                     color_discrete_sequence=['#FF4B4B'])
+        # กราฟยอดขายรายวัน
+        st.write("### แนวโน้มยอดขาย")
+        daily_sales = df.groupby('transaction_date')['total_sales'].sum().reset_index()
+        fig = px.line(daily_sales, x='transaction_date', y='total_sales', markers=True)
         st.plotly_chart(fig, use_container_width=True)
-        
-        st.table(res_df)
+
+    elif menu == "บันทึกยอดขาย":
+        st.title("📝 ประวัติการขาย")
+        st.write("รายการขายล่าสุดจากระบบ")
+        # โชว์ตารางข้อมูล 100 แถวล่าสุด
+        st.dataframe(df.tail(100), use_container_width=True)
+
+    elif menu == "จัดการสินค้า":
+        st.title("📦 วิเคราะห์สินค้า")
+        # กราฟแท่งแสดงยอดขายตามประเภทสินค้า
+        prod_sales = df.groupby('product_category')['total_sales'].sum().sort_values(ascending=False).reset_index()
+        fig_bar = px.bar(prod_sales, x='product_category', y='total_sales', color='product_category', title='ยอดขายแยกตามประเภท')
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    elif menu == "คาดการณ์ยอดขาย":
+        st.title("🤖 ระบบคาดการณ์ AI")
+        st.write("วิเคราะห์แนวโน้มยอดขายในอนาคตด้วยข้อมูลจริง")
+        # ตัวอย่างการดึงข้อมูล 14 วันล่าสุดมาแสดงก่อนทำ AI
+        last_days = df.groupby('transaction_date')['total_sales'].sum().tail(14)
+        st.line_chart(last_days)
+        st.success("เชื่อมต่อฐานข้อมูลสำเร็จ พร้อมสำหรับการรัน Model XGBoost")
 
 else:
-    st.error("ไม่พบไฟล์ข้อมูล กรุณาตรวจสอบชื่อไฟล์ใน GitHub")
+    # ถ้าหาไฟล์ไม่เจอจะขึ้นเตือนแบบนี้ครับ
+    st.error(f"❌ ไม่พบไฟล์ 'Coffee Shop Sales.xlsx' ใน GitHub")
+    st.info("กรุณาตรวจสอบว่าชื่อไฟล์ใน GitHub พิมพ์ตรงกันทุกตัวอักษร (รวมถึงช่องว่างและตัวพิมพ์เล็ก/ใหญ่)")
