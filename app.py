@@ -10,7 +10,7 @@ st.set_page_config(layout="wide", page_title="AI Cafe Pro Dashboard")
 @st.cache_data
 def load_data():
     # ชื่อไฟล์ตามที่ระบบ GitHub ของอาจารย์โชว์
-    file_name = 'Coffee Shop Sales.xlsx - Transactions.csv'
+    file_name = 'Monthly_Sales_Plan.xlsx - Transactions.csv'
     
     if os.path.exists(file_name):
         df = pd.read_csv(file_name)
