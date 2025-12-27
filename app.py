@@ -28,7 +28,7 @@ st.markdown("""
 def load_data():
     target_file = None
     for file in os.listdir():
-        if 'Coffee' in file and file.endswith('.csv'):
+        if 'Coffee' in file and file.endswith('sales_forecast_results.csv'):
             target_file = file
             break
     
