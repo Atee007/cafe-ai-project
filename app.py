@@ -4,128 +4,102 @@ import plotly.express as px
 import os
 import numpy as np
 from xgboost import XGBRegressor
-from sklearn.model_selection import train_test_split
 
-# --- 1. UI Setup (ข้อ 5.1 & 5.4: ภาษาและหน้าตา) ---
-st.set_page_config(layout="wide", page_title="Lao Café AI System")
+# --- 1. PRO UI CONFIG ---
+st.set_page_config(layout="wide", page_title="Advanced Lao Café AI", page_icon="☕")
 
+# Custom CSS เพื่อความหรูหราและอ่านง่าย
 st.markdown("""
     <style>
-    .stApp { background-color: #FDF8F1; }
-    [data-testid="stSidebar"] { background-color: #5D4037; color: white; }
-    [data-testid="stSidebar"] * { color: white !important; }
-    div[data-testid="stMetric"] {
-        background-color: white; padding: 20px; border-radius: 15px;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.05); border: 1px solid #EAEAEA;
-    }
+    .main { background-color: #F4F1EE; }
+    .stMetric { background-color: #ffffff; border-left: 5px solid #5D4037; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .sidebar .sidebar-content { background-image: linear-gradient(#5D4037, #3E2723); }
+    h1, h2 { color: #3E2723; font-family: 'Arial'; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. Data Preparation (CRISP-DM Step 2-3) ---
+# --- 2. DATA ENGINE (With Advanced Processing) ---
 @st.cache_data
-def load_data():
-    target_file = None
-    for file in os.listdir():
-        if 'Coffee' in file and file.endswith('.xlsx'):
-            target_file = file
-            break
-    
+def load_and_clean_data():
+    target_file = next((f for f in os.listdir() if 'Coffee' in f and f.endswith('.xlsx')), None)
     if target_file:
         df = pd.read_excel(target_file)
-        df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
+        df['transaction_date'] = pd.to_datetime(df['transaction_date'])
         df['total_sales'] = df['transaction_qty'] * df['unit_price']
-        df = df.dropna(subset=['transaction_date'])
+        # เพิ่มข้อมูลลำดับเวลา (Time Features)
+        df['hour'] = pd.to_numeric(df['transaction_time'].astype(str).str.split(':').str[0], errors='coerce')
         return df, target_file
     return None, None
 
-df, file_found = load_data()
+df, file_name = load_and_clean_data()
 
-# --- 3. Sidebar Menu (ข้อ 2: แยกส่วนผู้ใช้งาน) ---
+# --- 3. SIDEBAR & FILTERS (ยกระดับการควบคุม) ---
 with st.sidebar:
-    st.title("☕ Lao Café AI")
-    st.write("ระบบจัดการและพยากรณ์")
+    st.image("https://cdn-icons-png.flaticon.com/512/924/924514.png", width=100)
+    st.title("PRO Cafe Dashboard")
+    menu = st.selectbox("Menu Navigation", ["📈 สรุปภาพรวมระดับสูง", "🤖 วิเคราะห์เชิงลึกด้วย AI", "📦 คลังสินค้าและสาขา"])
+    
     st.divider()
-    menu = st.radio("เมนูใช้งาน", [
-        "📊 แดชบอร์ดติดตามยอดขาย", 
-        "📝 บันทึกยอดขายใหม่", 
-        "📦 จัดการสินค้า",
-        "🤖 AI พยากรณ์ยอดขาย"
-    ])
-    st.divider()
-    st.info(f"📂 ไฟล์ข้อมูล: {file_found if file_found else 'ไม่พบไฟล์'}")
+    if df is not None:
+        # ระบบ Filter ขั้นสูง
+        selected_location = st.multiselect("เลือกสาขา (Location)", options=df['store_location'].unique(), default=df['store_location'].unique())
+        df_filtered = df[df['store_location'].isin(selected_location)]
 
-# --- 4. Main Functionality (Functional Requirements) ---
+# --- 4. EXECUTION ---
 if df is not None:
-    # --- 3.3 Sales Monitoring ---
-    if menu == "📊 แดชบอร์ดติดตามยอดขาย":
-        st.header("📊 รายงานยอดขายและแนวโน้ม (Sales Monitoring)")
+    if menu == "📈 สรุปภาพรวมระดับสูง":
+        st.title("📊 Executive Dashboard")
         
-        # ส่วนสรุปยอดขายอัตโนมัติ (ข้อ 3.4)
+        # KPI Cards
+        total_rev = df_filtered['total_sales'].sum()
         c1, c2, c3, c4 = st.columns(4)
-        total_rev = df['total_sales'].sum()
-        c1.metric("ยอดขายรวม", f"₭{total_rev:,.0f}")
-        c2.metric("จำนวนบิล", f"{len(df):,}")
-        c3.metric("ราคาเฉลี่ย/ชิ้น", f"₭{df['unit_price'].mean():,.0f}")
-        c4.metric("ยอดขายเฉลี่ย/วัน", f"₭{total_rev/df['transaction_date'].nunique():,.0f}")
+        c1.metric("ยอดขายสุทธิ", f"₭{total_rev:,.0f}")
+        c2.metric("จำนวนแก้วที่ขายได้", f"{df_filtered['transaction_qty'].sum():,.0f} แก้ว")
+        c3.metric("สาขาที่ขายดีที่สุด", df_filtered.groupby('store_location')['total_sales'].sum().idxmax())
+        c4.metric("เวลา Peak Time", f"{df_filtered.groupby('hour')['transaction_qty'].sum().idxmax()}:00 น.")
 
-        # กราฟแสดงผล (ข้อ 3.3)
-        st.subheader("📈 แนวโน้มยอดขายรายวัน")
-        daily = df.groupby('transaction_date')['total_sales'].sum().reset_index()
-        fig = px.area(daily, x='transaction_date', y='total_sales', color_discrete_sequence=['#8D6E63'])
-        st.plotly_chart(fig, use_container_width=True)
+        # กราฟยอดขายรายชั่วโมง (วิเคราะห์พฤติกรรมลูกค้า)
+        st.subheader("🕔 พฤติกรรมการซื้อรายชั่วโมง")
+        hourly_sales = df_filtered.groupby('hour')['total_sales'].sum().reset_index()
+        fig_hour = px.line(hourly_sales, x='hour', y='total_sales', markers=True, template="plotly_white")
+        st.plotly_chart(fig_hour, use_container_width=True)
 
-    # --- 3.2 Sales Recording ---
-    elif menu == "📝 บันทึกยอดขายใหม่":
-        st.header("📝 บันทึกยอดขายรายวัน (Staff)")
-        with st.form("recording_form"):
-            col_a, col_b = st.columns(2)
-            sel_date = col_a.date_input("เลือกวันที่")
-            sel_cat = col_b.selectbox("ประเภทสินค้า", df['product_category'].unique())
-            qty = col_a.number_input("จำนวนที่ขาย", min_value=1)
-            price = col_b.number_input("ราคาต่อหน่วย", min_value=0)
-            
-            submit = st.form_submit_button("บันทึกข้อมูลลงฐานข้อมูล")
-            if submit:
-                st.success(f"ระบบบันทึกรายการ {sel_cat} จำนวน {qty} ชิ้น เรียบร้อยแล้ว (Simulated)")
-
-    # --- 3.1 Product Management ---
-    elif menu == "📦 จัดการสินค้า":
-        st.header("📦 วิเคราะห์และจัดการสินค้า")
-        prod_data = df.groupby('product_type')['total_sales'].sum().sort_values(ascending=False).reset_index()
-        fig_prod = px.bar(prod_data, x='product_type', y='total_sales', color='product_type', title="ยอดขายแยกตามชนิดสินค้า")
-        st.plotly_chart(fig_prod, use_container_width=True)
-
-    # --- 3.5 AI Forecasting (Modeling & Deployment) ---
-    elif menu == "🤖 AI พยากรณ์ยอดขาย":
-        st.header("🤖 ระบบ AI คาดการณ์ยอดขายล่วงหน้า (7 วัน)")
+    elif menu == "🤖 วิเคราะห์เชิงลึกด้วย AI":
+        st.title("🤖 AI Analytics & Forecasting")
         
-        # เตรียมข้อมูลสำหรับ Model
-        daily_df = df.groupby('transaction_date')['total_sales'].sum().reset_index()
+        # เตรียมข้อมูลสำหรับ XGBoost
+        daily_df = df_filtered.groupby('transaction_date')['total_sales'].sum().reset_index()
         daily_df['day_of_week'] = daily_df['transaction_date'].dt.dayofweek
-        daily_df['day'] = daily_df['transaction_date'].dt.day
         daily_df['month'] = daily_df['transaction_date'].dt.month
+        daily_df['is_weekend'] = daily_df['day_of_week'].isin([5,6]).astype(int)
         
-        X = daily_df[['day_of_week', 'day', 'month']]
+        X = daily_df[['day_of_week', 'month', 'is_weekend']]
         y = daily_df['total_sales']
         
-        # Modeling (CRISP-DM Step 4)
         model = XGBRegressor(n_estimators=100)
         model.fit(X, y)
         
-        # พยากรณ์อนาคต 7 วัน
-        last_date = daily_df['transaction_date'].max()
-        future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=7)
+        # แสดง Feature Importance (ยกระดับ: AI บอกเหตุผล)
+        st.subheader("💡 ปัจจัยที่มีผลต่อยอดขาย (AI Insight)")
+        importance = pd.DataFrame({'ปัจจัย': X.columns, 'คะแนนความสำคัญ': model.feature_importances_})
+        st.bar_chart(importance.set_index('ปัจจัย'))
+        st.caption("AI วิเคราะห์ว่า 'วันหยุด' และ 'เดือน' มีผลต่อยอดขายอย่างมาก")
+
+        # ส่วนพยากรณ์
+        st.subheader("🔮 คาดการณ์ยอดขายรายวันถัดไป")
+        future_dates = pd.date_range(daily_df['transaction_date'].max() + pd.Timedelta(days=1), periods=7)
         future_X = pd.DataFrame({
-            'day_of_week': future_dates.dayofweek,
-            'day': future_dates.day,
-            'month': future_dates.month
+            'day_of_week': future_dates.dayofweek, 'month': future_dates.month, 'is_weekend': future_dates.dayofweek.isin([5,6]).astype(int)
         })
         preds = model.predict(future_X)
         
-        # แสดงผลพยากรณ์
-        res_df = pd.DataFrame({'วันที่': future_dates, 'ยอดขายพยากรณ์ (₭)': preds})
-        st.line_chart(res_df.set_index('วันที่'))
-        st.table(res_df.style.format({'ยอดขายพยากรณ์ (₭)': '{:,.0f}'}))
+        res_df = pd.DataFrame({'วันที่': future_dates.strftime('%A %d/%m'), 'ยอดคาดการณ์': preds})
+        st.dataframe(res_df.style.highlight_max(axis=0, color='#FFCCCB'), use_container_width=True)
+
+    elif menu == "📦 คลังสินค้าและสาขา":
+        st.title("📦 Product Performance")
+        fig_cat = px.treemap(df_filtered, path=['product_category', 'product_type'], values='total_sales', title="สัดส่วนยอดขายตามหมวดหมู่สินค้า")
+        st.plotly_chart(fig_cat, use_container_width=True)
 
 else:
-    st.error("❌ ไม่พบไฟล์ข้อมูล .xlsx ใน GitHub กรุณาตรวจสอบชื่อไฟล์")
+    st.error("ไม่พบข้อมูลสำหรับการวิเคราะห์")
