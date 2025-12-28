@@ -22,17 +22,45 @@ st.markdown("""
 # --- 2. ระบบจัดการข้อมูล (Data Engine) ---
 @st.cache_data
 def load_and_clean():
-    # ตรวจสอบไฟล์ใน GitHub (อ้างอิงจากรูปโครงสร้างไฟล์ของอาจารย์)
-    file_name = 'Monthly_Sales_Plan.xlsx' # หรือชื่อไฟล์ที่อาจารย์อัปโหลด
-    if os.path.exists(file_name):
-        df = pd.read_excel(file_name)
-        df['transaction_date'] = pd.to_datetime(df['transaction_date'])
-        df['total_sales'] = df['transaction_qty'] * df['unit_price']
-        df['hour'] = pd.to_numeric(df['transaction_time'].astype(str).str.split(':').str[0], errors='coerce')
-        return df, file_name
-    return None, None
+    # 1. ค้นหาไฟล์ .xlsx ทุกไฟล์ในโฟลเดอร์
+    files = [f for f in os.listdir() if f.endswith('.xlsx')]
+    if not files:
+        return None, None
+    
+    target_file = files[0] # เลือกไฟล์แรกที่เจอ
+    df = pd.read_excel(target_file)
+    
+    # 2. ระบบค้นหาคอลัมน์อัตโนมัติ (ป้องกัน KeyError)
+    # ค้นหาคอลัมน์ที่มีคำว่า 'date' หรือ 'ວັນທີ' หรือ 'วันที่'
+    date_col = next((c for c in df.columns if any(k in c.lower() for k in ['date', 'ວັນທີ', 'วัน'])), None)
+    qty_col = next((c for c in df.columns if any(k in c.lower() for k in ['qty', 'ຈຳນວນ', 'จำนวน'])), None)
+    price_col = next((c for c in df.columns if any(k in c.lower() for k in ['price', 'ລາຄາ', 'ราคา'])), None)
+    time_col = next((c for c in df.columns if any(k in c.lower() for k in ['time', 'ເວລາ', 'เวลา'])), None)
 
-df, current_file = load_and_clean()
+    if date_col and qty_col and price_col:
+        # เปลี่ยนชื่อคอลัมน์ให้เป็นมาตรฐานที่โค้ดเราใช้
+        df = df.rename(columns={
+            date_col: 'transaction_date',
+            qty_col: 'transaction_qty',
+            price_col: 'unit_price',
+            time_col: 'transaction_time' if time_col else 'transaction_time'
+        })
+        
+        # แปลงข้อมูล
+        df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
+        df['transaction_qty'] = pd.to_numeric(df['transaction_qty'], errors='coerce').fillna(0)
+        df['unit_price'] = pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)
+        df['total_sales'] = df['transaction_qty'] * df['unit_price']
+        
+        # จัดการเรื่องเวลา (ถ้าไม่มีคอลัมน์เวลา ให้สุ่มหรือตั้งค่ากลางไว้)
+        if 'transaction_time' not in df.columns:
+            df['hour'] = 10 # ค่าพื้นฐาน
+        else:
+            df['hour'] = pd.to_numeric(df['transaction_time'].astype(str).str.split(':').str[0], errors='coerce').fillna(10)
+            
+        return df.dropna(subset=['transaction_date']), target_file
+    
+    return None, target_file
 
 # --- 3. Sidebar เมนูภาษาลาว (เมนูยกระดับตามข้อ 3.1-3.6) ---
 with st.sidebar:
